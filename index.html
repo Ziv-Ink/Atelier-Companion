@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Professional SPD Layer Manager</title>
+
+  <!-- ======================
+       Styles
+       ====================== -->
+  <style>
+    * { box-sizing: border-box; margin:0; padding:0 }
+    html, body { height:100%; overflow:hidden; font-family:sans-serif }
+
+    /* --- Left Sidebar --- */
+    #sidebar-left {
+      position: fixed; top:0; left:0; bottom:0;
+      width:160px; background:#f9f9f9; border-right:1px solid #ddd;
+      padding:8px; display:flex; flex-direction:column; overflow-y:auto;
+    }
+    #controls { display:flex; flex-direction:column; gap:8px; margin-bottom:12px }
+    #controls button {
+      padding:6px; font-size:14px; border:1px solid #ccc; border-radius:4px;
+      background:#fff; cursor:pointer;
+    }
+    #controls button:hover { background:#eee }
+    #layers {
+      flex:1; overflow-y:auto;
+      list-style:none; display:flex; flex-direction:column; gap:12px;
+    }
+    .layer-item { display:flex; flex-direction:column; align-items:center; cursor:grab }
+    .layer-thumb {
+      width:90px; height:120px; object-fit:contain;
+      background:#eee; border:1px solid #ccc; border-radius:4px;
+    }
+    .layer-name { margin-top:4px; font-size:16px; text-align:center }
+    .layer-item .layer-name.editing input {
+        display: block;
+        width: 80px;
+        max-width: 90%;
+        text-align: center;
+        margin: 0 auto;
+        box-sizing: border-box;
+      }
+
+    /* --- Main Canvas Area --- */
+    #main {
+      position:absolute; top:0; bottom:0; left:160px; right:200px;
+      background:#888;
+      display:flex; align-items:center; justify-content:center;
+      overflow:hidden;
+    }
+    #canvas-container {
+      position:relative; width:100%; height:100%;
+      cursor:grab; overflow:hidden;
+      display:flex; align-items:center; justify-content:center;
+    }
+    #canvas-container.grabbing { cursor:grabbing }
+    #preview {
+      background:#eee;
+      background-image:
+        linear-gradient(45deg,#ccc 25%,transparent 25%,transparent 75%,#ccc 75%,#ccc),
+        linear-gradient(45deg,#ccc 25%,transparent 25%,transparent 75%,#ccc 75%,#ccc);
+      background-size:16px 16px; background-position:0 0,8px 8px;
+      border:2px solid #444;
+      transform-origin:center center;
+    }
+    #drop-area {
+      position:absolute; inset:0;
+      display:flex; align-items:center; justify-content:center;
+    }
+    #drop-area.hidden { display:none }
+    #drop-area .drop-box {
+      text-align:center; padding:24px;
+      background:rgba(255,255,255,0.85);
+      border:2px dashed #aaa; border-radius:8px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.1);
+    }
+    #drop-area p { font-size:18px; color:#555; margin-bottom:12px }
+    #drop-area button {
+      padding:8px 16px; font-size:16px;
+      border:1px solid #888; border-radius:4px;
+      background:#fff; cursor:pointer;
+    }
+    #drop-area button:hover { background:#eee }
+
+    /* --- Right Sidebar --- */
+    #sidebar-right {
+      position:fixed; top:0; right:0; bottom:0;
+      width:200px; background:#f9f9f9; border-left:1px solid #ddd;
+      padding:8px; display:flex; flex-direction:column; gap:12px; overflow-y:auto;
+    }
+    #canvas-info label { display:block; font-size:14px; margin-bottom:4px }
+    #canvas-info input {
+      width:100%; padding:4px; font-size:14px;
+      border:1px solid #ccc; border-radius:4px; background:#fff;
+    }
+    #canvas-actions { display:flex; flex-wrap:wrap; gap:4px }
+    #canvas-actions button {
+      flex:1 1 30%; padding:8px; font-size:14px;
+      border:1px solid #888; border-radius:4px; background:#fff; cursor:pointer;
+    }
+    #canvas-actions button:hover { background:#eee }
+    #canvas-actions #btn-center { flex:1 1 100% }
+    #btn-save {
+      padding:6px; font-size:14px; border:1px solid #ccc;
+      border-radius:4px; background:#fff; cursor:pointer;
+    }
+    #btn-save:disabled { background:#eee; cursor:not-allowed }
+
+    /* --- Context Menu --- */
+    #context-menu {
+      position:absolute; background:#fff; border:1px solid #ccc;
+      border-radius:4px; box-shadow:0 2px 8px rgba(0,0,0,0.2);
+      display:none; z-index:1000;
+    }
+    #context-menu div { padding:8px 12px; cursor:pointer }
+    #context-menu div:hover { background:#eee }
+
+    /* hide native file input */
+    #file-input { display:none }
+  </style>
+</head>
+<body>
+
+  <!-- ======================
+       Left Sidebar
+       ====================== -->
+  <div id="sidebar-left">
+    <div id="controls">
+      <button id="btn-new">🆕 New</button>
+      <button id="btn-import">📂 Import</button>
+    </div>
+    <ul id="layers"></ul>
+  </div>
+
+  <!-- ======================
+       Main Canvas Area
+       ====================== -->
+  <div id="main">
+    <div id="canvas-container">
+      <canvas id="preview"></canvas>
+      <div id="drop-area">
+        <div class="drop-box">
+          <p>Drag files here<br>or</p>
+          <button id="browse-btn">Browse…</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================
+       Right Sidebar
+       ====================== -->
+  <div id="sidebar-right">
+    <div id="canvas-info">
+      <label for="drawing-name">File Name</label>
+      <input id="drawing-name" type="text" value="drawing"/>
+      <label for="canvas-width">Canvas Width (px)</label>
+      <input id="canvas-width" type="number"/>
+      <label for="canvas-height">Canvas Height (px)</label>
+      <input id="canvas-height" type="number"/>
+      <label for="canvas-ppi">PPI</label>
+      <input id="canvas-ppi" type="number" min="1" value="72"/>
+    </div>
+    <div id="canvas-actions">
+      <button id="rotate-left">⟲</button>
+      <button id="rotate-right">⟳</button>
+      <button id="flip-h">↔️</button>
+      <button id="flip-v">↕️</button>
+      <button id="zoom-in">🔍＋</button>
+      <button id="zoom-out">🔍－</button>
+      <button id="fit">⛶</button>
+      <button id="btn-center">📍 Center</button>
+    </div>
+    <button id="btn-save" disabled>💾 Save as SPD</button>
+  </div>
+
+  <!-- ======================
+       Context Menu & File Input
+       ====================== -->
+  <div id="context-menu"></div>
+  <input type="file" id="file-input" multiple accept=".psd,image/*"/>
+
+  <!-- ======================
+       Scripts
+       ====================== -->
+       <script type="module">
+        import initPSD, { layer_info, flatten_layer } from "./pkg/psd_to_png_wasm.js";
+        import createSPDModule from "./generate_spd.js";
+        
+        // 1) Load SPD module (must have been compiled with callMain & FS exported)
+        const SPDReady = createSPDModule().catch(err => {
+          console.error("⚠️ SPD engine failed to load:", err);
+          alert("SPD engine failed to load: " + err.message);
+          throw err;
+        });
+        
+        // 2) Wait for DOM, then initialize PSD engine and wire up UI
+        document.addEventListener("DOMContentLoaded", async () => {
+          try {
+            await initPSD();
+          } catch (err) {
+            console.error("⚠️ PSD engine failed to load:", err);
+            alert("PSD engine failed to load: " + err.message);
+            return;
+          }
+          setupUI();
+        });
+        
+        function setupUI() {
+          // — Element references —
+          const fileInput   = document.getElementById("file-input");
+          const dropArea    = document.getElementById("drop-area");
+          const browseBtn   = document.getElementById("browse-btn");
+          const btnNew      = document.getElementById("btn-new");
+          const btnImport   = document.getElementById("btn-import");
+          const btnSave     = document.getElementById("btn-save");
+          const drawingName = document.getElementById("drawing-name");
+          const layersList  = document.getElementById("layers");
+          const preview     = document.getElementById("preview");
+          const container   = document.getElementById("canvas-container");
+          const cwInput     = document.getElementById("canvas-width");
+          const chInput     = document.getElementById("canvas-height");
+          const rotateLeft  = document.getElementById("rotate-left");
+          const rotateRight = document.getElementById("rotate-right");
+          const flipH       = document.getElementById("flip-h");
+          const flipV       = document.getElementById("flip-v");
+          const zoomInBtn   = document.getElementById("zoom-in");
+          const zoomOutBtn  = document.getElementById("zoom-out");
+          const fitBtn      = document.getElementById("fit");
+          const centerBtn   = document.getElementById("btn-center");
+          const contextMenu = document.getElementById("context-menu");
+        
+          // — State —
+          let images = [], opening = false;
+          let rotation = 0, flipX = false, flipY = false;
+          let zoom = 1, offsetX = 0, offsetY = 0;
+          let userW = 600, userH = 800, minW = 0, minH = 0;
+        
+          // — Helpers —
+          function resetInput() { fileInput.value = ""; }
+          function showDrop(show) { dropArea.classList.toggle("hidden", !show); }
+          function updateInfo() {
+            cwInput.value = userW;
+            chInput.value = userH;
+          }
+          function clearCanvas() {
+            images = [];
+            rotation = 0; flipX = flipY = false;
+            zoom = 1; offsetX = offsetY = 0;
+            userW = 600; userH = 800;
+            preview.width = userW;
+            preview.height = userH;
+            preview.style.width = userW + "px";
+            preview.style.height = userH + "px";
+            applyTransform();
+            updateInfo();
+            renderList();
+          }
+          function openPicker() {
+            if (opening) return;
+            opening = true;
+            fileInput.click();
+            setTimeout(() => opening = false, 300);
+          }
+        
+          // — Canvas transforms —
+          function applyTransform() {
+            preview.style.transform = `scale(${zoom}) translate(${offsetX}px,${offsetY}px)`;
+          }
+          function fitToContainer() {
+            offsetX = offsetY = 0;
+            const rw = container.clientWidth, rh = container.clientHeight;
+            zoom = Math.min(rw / userW, rh / userH, 1);
+            applyTransform();
+          }
+        
+          // — Resize inputs —
+          function applyWidth() {
+            userW = Math.max(parseInt(cwInput.value, 10) || userW, minW);
+            preview.width = userW;
+            preview.style.width = `${userW}px`;
+            renderCanvas();
+          }
+          cwInput.addEventListener("change", applyWidth);
+          cwInput.addEventListener("keydown", e => {
+            if (e.key === "Enter") { applyWidth(); cwInput.blur(); }
+          });
+          function applyHeight() {
+            userH = Math.max(parseInt(chInput.value, 10) || userH, minH);
+            preview.height = userH;
+            preview.style.height = `${userH}px`;
+            renderCanvas();
+          }
+          chInput.addEventListener("change", applyHeight);
+          chInput.addEventListener("keydown", e => {
+            if (e.key === "Enter") { applyHeight(); chInput.blur(); }
+          });
+        
+          // — Button bindings —
+          browseBtn.addEventListener("click", openPicker);
+          btnImport.addEventListener("click", openPicker);
+          btnNew.addEventListener("click", () => {
+            clearCanvas();
+            SPDReady.then(mod => {
+              try { mod.FS.readdir("/input").forEach(f => { if (f !== "." && f !== "..") mod.FS.unlink(`/input/${f}`); }); } catch{}
+              try { mod.FS.readdir("/output").forEach(f => { if (f !== "." && f !== "..") mod.FS.unlink(`/output/${f}`); }); } catch{}
+            });
+          });
+        
+          // — Rotation with width/height swap —
+          rotateLeft.addEventListener("click", () => {
+            rotation = (rotation + 270) % 360;
+            [userW, userH] = [userH, userW];
+            renderCanvas();
+          });
+          rotateRight.addEventListener("click", () => {
+            rotation = (rotation + 90) % 360;
+            [userW, userH] = [userH, userW];
+            renderCanvas();
+          });
+        
+          // — Flips —
+          flipH.addEventListener("click", () => { flipX = !flipX; renderCanvas(); });
+          flipV.addEventListener("click", () => { flipY = !flipY; renderCanvas(); });
+        
+          // — Zoom & Pan —
+          zoomInBtn.addEventListener("click", () => { zoom *= 1.2; applyTransform(); });
+          zoomOutBtn.addEventListener("click", () => { zoom /= 1.2; applyTransform(); });
+          fitBtn.addEventListener("click", fitToContainer);
+          centerBtn.addEventListener("click", () => { offsetX = offsetY = 0; applyTransform(); });
+          container.addEventListener("wheel", e => {
+            e.preventDefault();
+            zoom = Math.min(Math.max(zoom - e.deltaY * 0.001, 0.1), 10);
+            applyTransform();
+          }, { passive: false });
+        
+          let panning = false, lastX, lastY;
+          container.addEventListener("mousedown", e => {
+            if (e.button !== 0) return;
+            panning = true; lastX = e.clientX; lastY = e.clientY;
+            container.classList.add("grabbing");
+          });
+          document.addEventListener("mouseup", () => {
+            panning = false; container.classList.remove("grabbing");
+          });
+          document.addEventListener("mousemove", e => {
+            if (!panning) return;
+            offsetX += (e.clientX - lastX);
+            offsetY += (e.clientY - lastY);
+            lastX = e.clientX; lastY = e.clientY;
+            applyTransform();
+          });
+        
+          // — Context Menu & Layer List —
+          let ctxIdx = null;
+          document.addEventListener("click", () => contextMenu.style.display = "none");
+          contextMenu.addEventListener("click", e => {
+            const act = e.target.dataset.action;
+            if (!act) return;
+            const i = ctxIdx;
+            if (act === "rename") {
+              renameLayer(i, layersList.children[i].querySelector(".layer-name"));
+            } else if (act === "toggle") {
+              images[i].visible = !images[i].visible;
+              renderList(); renderCanvas();
+            } else if (act === "delete") {
+              if (confirm("Delete this layer?")) {
+                images.splice(i,1);
+                renderList(); renderCanvas();
+              }
+            }
+            contextMenu.style.display = "none";
+          });
+          function showMenu(x,y,i) {
+            ctxIdx = i;
+            contextMenu.innerHTML = `
+              <div data-action="rename">Rename Layer</div>
+              <div data-action="toggle">${images[i].visible ? "Hide" : "Show"} Layer</div>
+              <div data-action="delete">Delete Layer</div>`;
+            contextMenu.style.left = `${x}px`;
+            contextMenu.style.top  = `${y}px`;
+            contextMenu.style.display = "block";
+          }
+          function renderList() {
+            layersList.innerHTML = "";
+            images.forEach((rec,i) => {
+              const li = document.createElement("li");
+              li.className = "layer-item"; li.draggable = true;
+              const thumb = document.createElement("img");
+              thumb.className = "layer-thumb"; thumb.src = rec.img.src;
+              thumb.addEventListener("contextmenu", e => {
+                e.preventDefault(); showMenu(e.pageX, e.pageY, i);
+              });
+              const name = document.createElement("div");
+              name.className = "layer-name"; name.textContent = rec.name;
+              name.addEventListener("dblclick", () => renameLayer(i,name));
+              li.append(thumb,name);
+              layersList.append(li);
+              li.addEventListener("dragstart", e => e.dataTransfer.setData("text", i));
+              li.addEventListener("dragover", e => e.preventDefault());
+              li.addEventListener("drop", e => {
+                const from = +e.dataTransfer.getData("text");
+                const mv = images.splice(from,1)[0];
+                images.splice(i,0,mv);
+                renderList(); renderCanvas();
+              });
+            });
+          }
+          function renameLayer(i,el) {
+            el.classList.add("editing");
+            const inp = document.createElement("input");
+            inp.value = images[i].name;
+            el.textContent = ""; el.append(inp); inp.focus();
+            inp.addEventListener("blur", () => { images[i].name = inp.value; renderList(); });
+            inp.addEventListener("keydown", e => { if (e.key==="Enter") inp.blur(); });
+          }
+        
+          // — Canvas Rendering with Rotation-Based Minima —
+          function renderCanvas() {
+            if (!images.length) {
+              showDrop(true);
+              btnSave.disabled = true;
+              return;
+            }
+            showDrop(false);
+            btnSave.disabled = false;
+        
+            const maxW = Math.max(...images.map(m=>m.width));
+            const maxH = Math.max(...images.map(m=>m.height));
+        
+            if (rotation % 180 === 0) {
+              minW = maxW; minH = maxH;
+            } else {
+              minW = maxH; minH = maxW;
+            }
+        
+            userW = Math.max(userW, minW);
+            userH = Math.max(userH, minH);
+        
+            preview.width  = userW;
+            preview.height = userH;
+            preview.style.width  = `${userW}px`;
+            preview.style.height = `${userH}px`;
+        
+            applyTransform();
+            updateInfo();
+        
+            const ctx = preview.getContext("2d");
+            ctx.setTransform(1,0,0,1,0,0);
+            ctx.clearRect(0,0,userW,userH);
+        
+            const ang = ((rotation%360)+360)%360;
+            ctx.translate(userW/2, userH/2);
+            ctx.scale(flipX?-1:1, flipY?-1:1);
+            ctx.rotate(ang * Math.PI/180);
+        
+            for (const rec of images.slice().reverse()) {
+              if (!rec.visible) continue;
+              ctx.drawImage(
+                rec.img,
+                -userW/2 + (userW - rec.width)/2,
+                -userH/2 + (userH - rec.height)/2
+              );
+            }
+        
+            fitToContainer();
+          }
+        
+          // — L-A PNG Helper —
+          function toLAPNG(c) {
+            const ct = c.getContext("2d");
+            const {width, height} = c;
+            const imageData = ct.getImageData(0,0,width,height);
+            const d = imageData.data;
+            for (let i=0; i<d.length; i+=4) {
+              const L = Math.round(0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]);
+              d[i]=d[i+1]=d[i+2]=L;
+            }
+            ct.putImageData(imageData,0,0);
+            return c.toDataURL("image/png");
+          }
+        
+          // — PSD / Image Processing —
+          async function processPSD(f) {
+            const buf = new Uint8Array(await f.arrayBuffer());
+            drawingName.value = f.name.replace(/\.[^.]+$/,"");
+            const layers = layer_info(buf);
+            for (let i=0; i<layers.length; i++) {
+              const id = flatten_layer(buf,i);
+              const c = document.createElement("canvas");
+              c.width = id.width; c.height = id.height;
+              c.getContext("2d").putImageData(id,0,0);
+              const url = toLAPNG(c);
+              const imgEl = new Image();
+              await new Promise(r=>{ imgEl.onload=r; imgEl.src=url; });
+              images.push({name:`Layer ${images.length+1}`, img:imgEl, width:id.width, height:id.height, visible:true});
+            }
+          }
+          async function processImage(f) {
+            const blob = URL.createObjectURL(f);
+            const raw  = new Image();
+            await new Promise(r=>{ raw.onload=r; raw.src=blob; });
+            const c = document.createElement("canvas");
+            c.width = raw.width; c.height = raw.height;
+            c.getContext("2d").drawImage(raw,0,0);
+            const url = toLAPNG(c);
+            const imgEl = new Image();
+            await new Promise(r=>{ imgEl.onload=r; imgEl.src=url; });
+            images.push({name:`Layer ${images.length+1}`, img:imgEl, width:raw.width, height:raw.height, visible:true});
+          }
+          async function loadFiles(files, clear=false) {
+            if (clear) images=[];
+            for (const f of files) {
+              if (f.name.toLowerCase().endsWith(".psd")) await processPSD(f);
+              else if (f.type.startsWith("image/")) await processImage(f);
+            }
+            const maxW = Math.max(...images.map(m=>m.width));
+            const maxH = Math.max(...images.map(m=>m.height));
+            userW=minW=maxW; userH=minH=maxH;
+            renderList(); renderCanvas(); resetInput();
+          }
+        
+          // — Save as SPD —
+          btnSave.addEventListener("click", async () => {
+            btnSave.disabled = true;
+            try {
+              const mod = await SPDReady;
+              mod.FS.createPath("/", "input", true, true);
+              mod.FS.createPath("/", "output", true, true);
+              for (let i=0; i<images.length; i++) {
+                const rec = images[i];
+                const ang = rotation % 360;
+                let w = rec.width, h = rec.height;
+                if (ang === 90 || ang === 270) [w,h] = [h,w];
+                const c = document.createElement("canvas");
+                c.width = w; c.height = h;
+                const ctx2 = c.getContext("2d");
+                ctx2.translate(w/2,h/2);
+                ctx2.scale(flipX?-1:1, flipY?-1:1);
+                ctx2.rotate(ang * Math.PI/180);
+                ctx2.drawImage(rec.img,-rec.width/2,-rec.height/2);
+                const blob = await new Promise(r=>c.toBlob(r,"image/png"));
+                const buf  = new Uint8Array(await blob.arrayBuffer());
+                mod.FS.writeFile(`/input/layer${i+1}.png`, buf);
+              }
+              const outName = drawingName.value.replace(/\W+/g,"_") + ".spd";
+              mod.callMain([...images.map((_,i)=>`/input/layer${i+1}.png`), `/output/${outName}`]);
+              const data = mod.FS.readFile(`/output/${outName}`);
+              const spdBlob = new Blob([data], { type: "application/octet-stream" });
+              const url = URL.createObjectURL(spdBlob);
+              const a = document.createElement("a");
+              a.href = url; a.download = outName; a.click();
+              URL.revokeObjectURL(url);
+            } catch (err) {
+              console.error("SPD generation error:", err);
+              alert("Could not generate SPD: " + err.message);
+            } finally {
+              btnSave.disabled = false;
+            }
+          });
+        
+          // — Drag & Drop —
+          fileInput.addEventListener("change", e => loadFiles(e.target.files,false));
+          dropArea.addEventListener("drop", e => {
+            e.preventDefault();
+            loadFiles(e.dataTransfer.files,false);
+          });
+          ["dragenter","dragover"].forEach(evt =>
+            dropArea.addEventListener(evt, e => e.preventDefault())
+          );
+        
+          // Kick things off
+          clearCanvas();
+        }
+        </script>
+    </body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "psd_to_png_wasm",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "psd_to_png_wasm_bg.wasm",
+    "psd_to_png_wasm.js",
+    "psd_to_png_wasm.d.ts"
+  ],
+  "main": "psd_to_png_wasm.js",
+  "types": "psd_to_png_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
