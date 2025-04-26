@@ -30,7 +30,7 @@ Atelier Companion makes it easy for anyone—no software installs or technical s
    - Adjust canvas size by entering the desired width and height
 4. When you’re ready, click **Export SPD**
 5. Copy the downloaded `.spd` file to your Supernote
-6. Open Atelier on your Supernote and load your new file
+6. Open your new file with Atelier
 
 ## Tips for smooth use
 
